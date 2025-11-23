@@ -30,12 +30,24 @@ spring:
       properties:
         spring.json.add.type.headers: false
   
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI:http://localhost:8080/realms/exhibitflow}
-          jwk-set-uri: ${SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI:http://localhost:8080/realms/exhibitflow/protocol/openid-connect/certs}
+  # Security configuration removed - using custom JWT decoder with shared secret (HS512)
+  
+jwt:
+  secret: ${JWT_SECRET:your-256-bit-secret-key-for-jwt-tokens-change-in-production}
+
+# Identity Service Integration (Custom IAM)
+identity-service:
+  # Base URL of the Identity Service
+  base-url: ${IDENTITY_SERVICE_URL:http://localhost:8080/api/v1}
+  # OAuth endpoints
+  oauth:
+    introspect-url: ${identity-service.base-url}/oauth/introspect
+    validate-url: ${identity-service.base-url}/oauth/validate
+  # Authentication endpoints (for reference/documentation)
+  auth:
+    login-url: ${identity-service.base-url}/auth/login
+    register-url: ${identity-service.base-url}/auth/register
+    refresh-url: ${identity-service.base-url}/auth/refresh
 
 server:
   port: ${SERVER_PORT:8081}

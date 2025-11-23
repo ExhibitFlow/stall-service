@@ -1,5 +1,8 @@
 version: '3.8'
 
+# External Identity Service: https://j2bxq20h-8081.asse.devtunnels.ms
+# The Stall Service connects to this external OAuth2/JWT authentication service
+
 services:
   # PostgreSQL Database
   postgres:
@@ -63,39 +66,8 @@ services:
       timeout: 10s
       retries: 5
 
-  # Keycloak (OAuth2 Authorization Server)
-  keycloak:
-    image: quay.io/keycloak/keycloak:23.0
-    container_name: stall-keycloak
-    command: 
-      - start-dev
-      - --import-realm
-    environment:
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN:-admin}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
-      KC_DB: postgres
-      KC_DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:-stalldb}
-      KC_DB_USERNAME: ${POSTGRES_USER:-stalluser}
-      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-stallpass}
-      KC_HTTP_RELATIVE_PATH: /
-      KC_HOSTNAME_STRICT: false
-      KC_HOSTNAME_STRICT_HTTPS: false
-      KC_HTTP_ENABLED: true
-    ports:
-      - "${KEYCLOAK_PORT:-8080}:8080"
-    volumes:
-      - ./keycloak:/opt/keycloak/data/import
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - stall-network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health/ready"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
+  # Identity Service (External - Running at https://j2bxq20h-8081.asse.devtunnels.ms)
+  # No local container needed - using external service
 
   # Stall Service
   stall-service:
@@ -108,6 +80,7 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+      # identity-service removed - using external service
     ports:
       - "${APP_PORT:-8081}:8081"
     environment:
@@ -126,9 +99,8 @@ services:
       SPRING_FLYWAY_ENABLED: ${FLYWAY_ENABLED:-true}
       SPRING_FLYWAY_BASELINE_ON_MIGRATE: ${FLYWAY_BASELINE_ON_MIGRATE:-true}
       
-      # OAuth2 Configuration
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: ${JWT_ISSUER_URI:-http://localhost:8080/realms/exhibitflow}
-      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_JWK_SET_URI: ${JWT_JWK_SET_URI:-http://keycloak:8080/realms/exhibitflow/protocol/openid-connect/certs}
+      # JWT Configuration (Custom Identity Service - External using HS512)
+      JWT_SECRET: ${JWT_SECRET:-f2c6e97c097796d1a76cde99efa8e6383c289000889fad38eb6f93274768a347}
       
       # Kafka Topics
       KAFKA_TOPICS_STALL_RESERVED: ${KAFKA_TOPIC_STALL_RESERVED:-stall.reserved}
