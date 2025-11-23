@@ -1,62 +1,42 @@
 ### Stall Service API Tests
 ### Base URL
 @baseUrl = https://miniature-space-fortnight-p9945qrp4xpf7q46-8081.app.github.dev
-@keycloakUrl = https://miniature-space-fortnight-p9945qrp4xpf7q46-8080.app.github.dev
+@identityUrl = https://j2bxq20h-8081.asse.devtunnels.ms/api/v1
 
 ###############################################
 # Health Check (No Auth Required)
 ###############################################
 
-### Health Check
+### Health Check - Stall Service
 GET {{baseUrl}}/actuator/health
 
+### Health Check - Identity Service
+GET {{identityUrl}}/actuator/health
+
 ###############################################
-# Keycloak - Get Access Tokens
+# Identity Service - Get Access Tokens
 ###############################################
 
-### Get Token with Service Account (Client Credentials)
-# @name getServiceToken
-POST {{keycloakUrl}}/realms/exhibitflow/protocol/openid-connect/token
-Content-Type: application/x-www-form-urlencoded
-
-grant_type=client_credentials
-&client_id=stall-service
-&client_secret=stall-service-secret-key-2024
-
-### Get Token for Admin User (Password Grant)
+### Get Token for Admin User
 # @name getAdminToken
-POST {{keycloakUrl}}/realms/exhibitflow/protocol/openid-connect/token
-Content-Type: application/x-www-form-urlencoded
+POST {{identityUrl}}/auth/login
+Content-Type: application/json
 
-grant_type=password
-&client_id=stall-service
-&client_secret=stall-service-secret-key-2024
-&username=admin
-&password=admin123
+{
+  "username": "admin",
+  "password": "admin123"
+}
 
-### Get Token for Manager User
-# @name getManagerToken
-POST {{keycloakUrl}}/realms/exhibitflow/protocol/openid-connect/token
-Content-Type: application/x-www-form-urlencoded
+### Refresh Token
+# @name refreshToken
+POST {{identityUrl}}/auth/refresh
+Content-Type: application/json
 
-grant_type=password
-&client_id=stall-service
-&client_secret=stall-service-secret-key-2024
-&username=manager
-&password=manager123
+{
+  "refreshToken": "{{getAdminToken.response.body.refreshToken}}"
+}
 
-### Get Token for Viewer User
-# @name getViewerToken
-POST {{keycloakUrl}}/realms/exhibitflow/protocol/openid-connect/token
-Content-Type: application/x-www-form-urlencoded
-
-grant_type=password
-&client_id=stall-service
-&client_secret=stall-service-secret-key-2024
-&username=viewer
-&password=viewer123
-
-@accessToken = {{getAdminToken.response.body.access_token}}
+@accessToken = {{getAdminToken.response.body.accessToken}}
 
 ###############################################
 # Stall Management APIs (Require Auth)
