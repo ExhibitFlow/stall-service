@@ -44,27 +44,34 @@ curl -H "Authorization: Bearer <token>" http://localhost:8081/api/stalls
 **Service URLs:**
 - Stall API: http://localhost:8081
 - Swagger UI: http://localhost:8081/swagger-ui.html
-- Keycloak: http://localhost:8080 (admin/admin)
+- Identity Service: http://localhost:8080/api/v1 (admin/admin123)
 - PostgreSQL: localhost:5432 (stalluser/stallpass)
+- Kafka: localhost:9092
+
+**📚 Documentation:**
+- [Identity Integration Guide](IDENTITY_INTEGRATION.md) - Complete integration documentation
+- [Security Overview](SECURITY.md) - Authentication and authorization
+- [API Reference](Identity_Service_API_QUICK_REFERENCE.md) - Identity Service API endpoints
+- [Integration Summary](INTEGRATION_SUMMARY.md) - Implementation details
 
 ---
 
 ## Architecture
 
 ```
-┌─────────┐           ┌──────────┐           ┌───────────────┐
-│ Client  │──(1)───>  │ Keycloak │──(2)───>  │               │
-│         │  Token    │ OAuth2   │  JWT      │ Stall Service │
-│         │  Request  │ Server   │  Token    │  (Protected)  │
-└─────────┘           └──────────┘           └───────────────┘
-      │                                              │
-      └────────────────(3)──────────────────────────┘
+┌─────────┐           ┌──────────────────┐           ┌───────────────┐
+│ Client  │──(1)───>  │  Identity Service│──(2)───>  │               │
+│         │  Login    │  Custom OAuth2   │  JWT      │ Stall Service │
+│         │  Request  │  Auth Server     │  Token    │  (Protected)  │
+└─────────┘           └──────────────────┘           └───────────────┘
+      │                                                     │
+      └────────────────(3)──────────────────────────────────┘
               API Request with Bearer Token
                           │
                           ▼
               ┌───────────────────────┐
               │     PostgreSQL DB     │
-              │   (Stall Data)        │
+              │ (Stall + Identity)    │
               └───────────────────────┘
                           │
                           ▼
@@ -84,9 +91,9 @@ curl -H "Authorization: Bearer <token>" http://localhost:8081/api/stalls
 │  │ postgres │    │  zookeeper   │       │
 │  └────┬─────┘    └──────┬───────┘       │
 │       │                 │               │
-│  ┌────┴─────┐    ┌──────┴───────┐       │
-│  │ keycloak │    │    kafka     │       │
-│  └────┬─────┘    └──────┬───────┘       │
+│  ┌────┴──────────┐ ┌────┴───────┐       │
+│  │identity-service│ │   kafka    │       │
+│  └────┬──────────┘ └────┬───────┘       │
 │       │                 │               │
 │       └────────┬────────┘               │
 │         ┌──────┴───────┐                │
@@ -105,7 +112,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:8081/api/stalls
 - Status workflow: AVAILABLE → HELD → RESERVED
 - Advanced filtering by status, size, location
 - Pagination and sorting
-- OAuth2/JWT authentication via Keycloak
+- OAuth2/JWT authentication via Custom Identity Service
 - Kafka event publishing for state changes
 - PostgreSQL with Flyway migrations
 - Seeded sample data (39 stalls)
@@ -123,7 +130,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:8081/api/stalls
 - **Spring Data JPA**
 - **Spring Kafka**
 - **PostgreSQL 15**
-- **Keycloak 23**
+- **Custom Identity Service (Spring Authorization Server)**
 - **Flyway**
 - **Docker & Docker Compose**
 - **Kafka 3.6**
@@ -229,6 +236,7 @@ POST /api/stalls/1/release     # Release stall (make available)
 
 - Docker 20.10+
 - Docker Compose 2.0+
+- Access to external Identity Service (already configured)
 
 ### Start Services
 
@@ -256,9 +264,10 @@ POSTGRES_DB=stalldb
 POSTGRES_USER=stalluser
 POSTGRES_PASSWORD=stallpass
 
-# Keycloak
-KEYCLOAK_CLIENT_ID=stall-service
-KEYCLOAK_CLIENT_SECRET=stall-service-secret-key-2024
+# Identity Service (External)
+IDENTITY_URL=https://j2bxq20h-8081.asse.devtunnels.ms
+IDENTITY_CLIENT_ID=stall-service-client
+IDENTITY_CLIENT_SECRET=stall-service-secret
 
 # Kafka
 KAFKA_TOPIC_STALL_RESERVED=stall.reserved
@@ -277,8 +286,8 @@ curl http://localhost:8081/actuator/health
 # PostgreSQL
 docker exec stall-postgres pg_isready -U stalluser
 
-# Keycloak
-curl http://localhost:8080/health/ready
+# Identity Service
+curl https://j2bxq20h-8081.asse.devtunnels.ms/api/v1/actuator/health
 
 # Kafka
 docker exec stall-kafka kafka-broker-api-versions --bootstrap-server localhost:9092
@@ -332,48 +341,66 @@ docker-compose up -d
 
 ## Security & Authentication
 
-### Keycloak Configuration
+> **📖 Complete Guide:** See [IDENTITY_INTEGRATION.md](IDENTITY_INTEGRATION.md) for detailed integration documentation
 
-**Realm:** `exhibitflow`  
-**Client ID:** `stall-service`  
-**Client Secret:** `stall-service-secret-key-2024`
+### Identity Service Configuration
+
+**Base URL:** `http://localhost:8080/api/v1` (or configure with `IDENTITY_SERVICE_URL`)  
+**Login Endpoint:** `/auth/login`  
+**Register Endpoint:** `/auth/register`  
+**Token Introspection:** `/oauth/introspect`
+
+### Authentication Method
+
+- **JWT with HS512:** Tokens validated using shared secret (HS512 algorithm)
+- **Role-Based Access:** VIEWER, MANAGER, ADMIN roles
+- **Method Security:** Fine-grained `@PreAuthorize` annotations
+- **Token Claims:** Includes roles, permissions, and user identity
 
 ### Pre-configured Users
 
 | Username | Password | Roles | Description |
 |----------|----------|-------|-------------|
-| admin | admin123 | admin, user | Full access |
-| manager | manager123 | user | Management access |
-| viewer | viewer123 | user | Read-only |
+| admin | admin123 | ADMIN, VIEWER | Full access to all operations |
+
+**New users:** Register via `/api/v1/auth/register` (automatically get VIEWER role)
+
+### Role-Based Authorization
+
+| Endpoint | Method | VIEWER | MANAGER | ADMIN | Description |
+|----------|--------|--------|---------|-------|-------------|
+| GET /api/stalls | List | ✅ | ✅ | ✅ | Read-only access |
+| GET /api/stalls/{id} | Get | ✅ | ✅ | ✅ | Read-only access |
+| POST /api/stalls | Create | ❌ | ❌ | ✅ | Admin only |
+| PUT /api/stalls/{id} | Update | ❌ | ✅ | ✅ | Manager or higher |
+| POST /api/stalls/{id}/hold | Hold | ❌ | ✅ | ✅ | Manager or higher |
+| POST /api/stalls/{id}/release | Release | ❌ | ✅ | ✅ | Manager or higher |
+| POST /api/stalls/{id}/reserve | Reserve | ❌ | ✅ | ✅ | Manager or higher |
 
 ### Get Authentication Token
 
 #### Option 1: Helper Script (Easiest)
 
 ```bash
+# Interactive menu for token retrieval
 ./get-token.sh
+
+# Test integration end-to-end
+./test-identity-integration.sh
 ```
 
 #### Option 2: cURL
 
 ```bash
 # Get token
-curl -X POST "http://localhost:8080/realms/exhibitflow/protocol/openid-connect/token" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=password" \
-  -d "client_id=stall-service" \
-  -d "client_secret=stall-service-secret-key-2024" \
-  -d "username=admin" \
-  -d "password=admin123"
+curl -X POST "http://localhost:8080/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}'
 
 # Extract token
-TOKEN=$(curl -s -X POST "http://localhost:8080/realms/exhibitflow/protocol/openid-connect/token" \
-  -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "grant_type=password" \
-  -d "client_id=stall-service" \
-  -d "client_secret=stall-service-secret-key-2024" \
-  -d "username=admin" \
-  -d "password=admin123" | jq -r '.access_token')
+TOKEN=$(curl -s -X POST "http://localhost:8080/api/v1/auth/login" \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}' | jq -r '.accessToken')
 
 # Use token
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8081/api/stalls
@@ -392,10 +419,12 @@ Import `Stall-Service.postman_collection.json` into Postman. Authentication requ
 
 ### Token Details
 
-- **Lifetime:** 1 hour
-- **Algorithm:** RS256
-- **Validation:** JWK endpoint auto-fetch
-- **Issuer:** `http://localhost:8080/realms/exhibitflow`
+- **Lifetime:** 24 hours (86400 seconds)
+- **Algorithm:** HS512 (HMAC-SHA512)
+- **Validation:** Shared secret validation
+- **Issuer:** `http://localhost:8080/api/v1`
+- **Refresh Token Lifetime:** 7 days
+- **Claims:** roles, permissions, authorities, userId, username, email
 
 ### Testing Authentication
 
@@ -410,7 +439,7 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8081/api/stalls
 
 ---
 
-## Running Locally
+### Running Locally
 
 ### Prerequisites
 
@@ -418,7 +447,7 @@ curl -H "Authorization: Bearer $TOKEN" http://localhost:8081/api/stalls
 - Maven 3.6+
 - PostgreSQL 12+
 - Kafka 2.8+ (optional)
-- Keycloak (optional, use Docker)
+- External Identity Service access (pre-configured)
 
 ### Setup Database
 
@@ -434,8 +463,8 @@ psql -d stalldb -c "GRANT ALL PRIVILEGES ON DATABASE stalldb TO stalluser;"
 ### Run Dependencies Only
 
 ```bash
-# Start PostgreSQL, Kafka, Keycloak via Docker
-docker-compose up -d postgres kafka zookeeper keycloak
+# Start PostgreSQL, Kafka via Docker (Identity Service is external)
+docker-compose up -d postgres kafka zookeeper
 
 # Run application locally
 mvn spring-boot:run
@@ -579,32 +608,34 @@ Error response format:
 
 **Causes:**
 - Token expired (1 hour lifetime)
-- Wrong client secret
-- Service can't reach Keycloak JWK endpoint
+- Wrong JWT secret
+- Service can't reach Identity Service JWK endpoint
 
 **Solution:**
 ```bash
 # Check logs
 docker logs stall-service
 
-# Verify Keycloak connectivity
-docker exec stall-service wget -O- -q http://keycloak:8080/realms/exhibitflow/protocol/openid-connect/certs
+# Verify Identity Service connectivity
+curl https://j2bxq20h-8081.asse.devtunnels.ms/api/v1/.well-known/jwks.json
 ```
 
-### Can't Get Token from Keycloak
+### Can't Get Token from Identity Service
 
 **Causes:**
 - Wrong username/password
-- Keycloak not running
-- Realm not imported
+- Identity Service not running
+- Database migration not completed
 
 **Solution:**
 ```bash
-# Check Keycloak logs
-docker logs stall-keycloak | grep -i exhibitflow
+# Verify service is ready
+curl https://j2bxq20h-8081.asse.devtunnels.ms/api/v1/actuator/health
 
-# Verify realm exists
-curl http://localhost:8080/realms/exhibitflow/.well-known/openid-configuration
+# Test login endpoint
+curl -X POST https://j2bxq20h-8081.asse.devtunnels.ms/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"admin","password":"admin123"}'
 ```
 
 ### Database Connection Failed
@@ -684,8 +715,7 @@ Docker/Config Files:
 ├── docker-compose.yml               # Service orchestration
 ├── .env.template                    # Environment template
 ├── .dockerignore                    # Docker ignore rules
-├── keycloak/
-│   └── exhibitflow-realm.json       # Keycloak realm config
+├── identity-service/                # Custom Identity Service code
 ├── get-token.sh                     # Token helper script
 ├── api_test.http                    # REST Client tests
 └── Stall-Service.postman_collection.json  # Postman collection
