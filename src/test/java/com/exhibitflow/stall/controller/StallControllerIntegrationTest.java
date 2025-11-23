@@ -47,8 +47,8 @@ class StallControllerIntegrationTest {
     }
 
     @Test
-    @WithMockUser
-    void getStalls_shouldReturnPagedStalls() throws Exception {
+    @WithMockUser(roles = "VIEWER")
+    void getStalls_shouldReturnPagedStalls_withViewerRole() throws Exception {
         // Given
         Stall stall = createTestStall("A-001", StallSize.MEDIUM, "Hall A", "500.00", StallStatus.AVAILABLE);
         stallRepository.save(stall);
@@ -64,8 +64,8 @@ class StallControllerIntegrationTest {
     }
 
     @Test
-    @WithMockUser
-    void getStalls_shouldFilterByStatus() throws Exception {
+    @WithMockUser(roles = "MANAGER")
+    void getStalls_shouldFilterByStatus_withManagerRole() throws Exception {
         // Given
         stallRepository.save(createTestStall("A-001", StallSize.MEDIUM, "Hall A", "500.00", StallStatus.AVAILABLE));
         stallRepository.save(createTestStall("A-002", StallSize.LARGE, "Hall B", "750.00", StallStatus.HELD));
@@ -80,8 +80,8 @@ class StallControllerIntegrationTest {
     }
 
     @Test
-    @WithMockUser
-    void getStallById_shouldReturnStall() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void getStallById_shouldReturnStall_withAdminRole() throws Exception {
         // Given
         Stall stall = createTestStall("A-001", StallSize.MEDIUM, "Hall A", "500.00", StallStatus.AVAILABLE);
         Stall saved = stallRepository.save(stall);
@@ -105,8 +105,8 @@ class StallControllerIntegrationTest {
     }
 
     @Test
-    @WithMockUser
-    void createStall_shouldCreateNewStall() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void createStall_shouldCreateNewStall_withAdminRole() throws Exception {
         // Given
         CreateStallRequest request = CreateStallRequest.builder()
                 .code("B-002")
@@ -123,6 +123,42 @@ class StallControllerIntegrationTest {
                 .andExpect(jsonPath("$.code").value("B-002"))
                 .andExpect(jsonPath("$.size").value("LARGE"))
                 .andExpect(jsonPath("$.status").value("AVAILABLE"));
+    }
+
+    @Test
+    @WithMockUser(roles = "VIEWER")
+    void createStall_shouldReturn403_withViewerRole() throws Exception {
+        // Given
+        CreateStallRequest request = CreateStallRequest.builder()
+                .code("B-002")
+                .size(StallSize.LARGE)
+                .location("Hall B")
+                .price(new BigDecimal("750.00"))
+                .build();
+
+        // When/Then
+        mockMvc.perform(post("/api/stalls")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "MANAGER")
+    void createStall_shouldReturn403_withManagerRole() throws Exception {
+        // Given
+        CreateStallRequest request = CreateStallRequest.builder()
+                .code("B-002")
+                .size(StallSize.LARGE)
+                .location("Hall B")
+                .price(new BigDecimal("750.00"))
+                .build();
+
+        // When/Then
+        mockMvc.perform(post("/api/stalls")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden());
     }
 
     @Test
@@ -166,8 +202,8 @@ class StallControllerIntegrationTest {
     }
 
     @Test
-    @WithMockUser
-    void updateStall_shouldUpdateStall() throws Exception {
+    @WithMockUser(roles = "MANAGER")
+    void updateStall_shouldUpdateStall_withManagerRole() throws Exception {
         // Given
         Stall stall = createTestStall("A-001", StallSize.MEDIUM, "Hall A", "500.00", StallStatus.AVAILABLE);
         Stall saved = stallRepository.save(stall);
@@ -187,8 +223,27 @@ class StallControllerIntegrationTest {
     }
 
     @Test
-    @WithMockUser
-    void holdStall_shouldChangeStatusToHeld() throws Exception {
+    @WithMockUser(roles = "VIEWER")
+    void updateStall_shouldReturn403_withViewerRole() throws Exception {
+        // Given
+        Stall stall = createTestStall("A-001", StallSize.MEDIUM, "Hall A", "500.00", StallStatus.AVAILABLE);
+        Stall saved = stallRepository.save(stall);
+
+        UpdateStallRequest request = UpdateStallRequest.builder()
+                .location("Hall C")
+                .price(new BigDecimal("600.00"))
+                .build();
+
+        // When/Then
+        mockMvc.perform(put("/api/stalls/{id}", saved.getId())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(request)))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "MANAGER")
+    void holdStall_shouldChangeStatusToHeld_withManagerRole() throws Exception {
         // Given
         Stall stall = createTestStall("A-001", StallSize.MEDIUM, "Hall A", "500.00", StallStatus.AVAILABLE);
         Stall saved = stallRepository.save(stall);
@@ -201,8 +256,8 @@ class StallControllerIntegrationTest {
     }
 
     @Test
-    @WithMockUser
-    void holdStall_shouldBeIdempotent() throws Exception {
+    @WithMockUser(roles = "ADMIN")
+    void holdStall_shouldBeIdempotent_withAdminRole() throws Exception {
         // Given
         Stall stall = createTestStall("A-001", StallSize.MEDIUM, "Hall A", "500.00", StallStatus.HELD);
         Stall saved = stallRepository.save(stall);
@@ -215,8 +270,21 @@ class StallControllerIntegrationTest {
     }
 
     @Test
-    @WithMockUser
-    void releaseStall_shouldChangeStatusToAvailable() throws Exception {
+    @WithMockUser(roles = "VIEWER")
+    void holdStall_shouldReturn403_withViewerRole() throws Exception {
+        // Given
+        Stall stall = createTestStall("A-001", StallSize.MEDIUM, "Hall A", "500.00", StallStatus.AVAILABLE);
+        Stall saved = stallRepository.save(stall);
+
+        // When/Then
+        mockMvc.perform(post("/api/stalls/{id}/hold", saved.getId())
+                        .contentType(MediaType.APPLICATION_JSON))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(roles = "MANAGER")
+    void releaseStall_shouldChangeStatusToAvailable_withManagerRole() throws Exception {
         // Given
         Stall stall = createTestStall("A-001", StallSize.MEDIUM, "Hall A", "500.00", StallStatus.HELD);
         Stall saved = stallRepository.save(stall);
@@ -229,8 +297,8 @@ class StallControllerIntegrationTest {
     }
 
     @Test
-    @WithMockUser
-    void reserveStall_shouldChangeStatusToReserved() throws Exception {
+    @WithMockUser(roles = "MANAGER")
+    void reserveStall_shouldChangeStatusToReserved_withManagerRole() throws Exception {
         // Given
         Stall stall = createTestStall("A-001", StallSize.MEDIUM, "Hall A", "500.00", StallStatus.HELD);
         Stall saved = stallRepository.save(stall);
@@ -243,7 +311,7 @@ class StallControllerIntegrationTest {
     }
 
     @Test
-    @WithMockUser
+    @WithMockUser(roles = "MANAGER")
     void reserveStall_shouldReturn400_whenNotHeld() throws Exception {
         // Given
         Stall stall = createTestStall("A-001", StallSize.MEDIUM, "Hall A", "500.00", StallStatus.AVAILABLE);

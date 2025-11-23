@@ -4,7 +4,7 @@ Base URL: `http://localhost:8081`
 
 ## Authentication
 
-All endpoints require JWT authentication via OAuth2/Keycloak.
+All endpoints require JWT authentication via Custom Identity Service.
 
 **Required Header:**
 ```
@@ -726,42 +726,44 @@ All paginated endpoints return the following structure:
 
 ## Authentication
 
-To obtain an access token, make a POST request to Keycloak:
+To obtain an access token, make a POST request to the Identity Service:
 
-**Endpoint:** `POST http://localhost:8080/realms/exhibitflow/protocol/openid-connect/token`
+**Endpoint:** `POST https://j2bxq20h-8081.asse.devtunnels.ms/api/v1/auth/login`
 
 **Headers:**
 ```
-Content-Type: application/x-www-form-urlencoded
+Content-Type: application/json
 ```
 
 **Request Body (Admin User):**
-```
-grant_type=password
-client_id=stall-service
-client_secret=stall-service-secret-key-2024
-username=admin
-password=admin123
+```json
+{
+  "username": "admin",
+  "password": "admin123"
+}
 ```
 
 **Response:**
 ```json
 {
-  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI...",
-  "expires_in": 3600,
-  "refresh_expires_in": 1800,
-  "refresh_token": "eyJhbGciOiJIUzI1NiIsInR5cCI...",
-  "token_type": "Bearer",
-  "not-before-policy": 0,
-  "session_state": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-  "scope": "profile email"
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refreshToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "tokenType": "Bearer",
+  "expiresIn": 3600
 }
 ```
 
-**Test Users:**
+**Test User:**
 - Admin: `admin` / `admin123`
-- Manager: `manager` / `manager123`
-- Viewer: `viewer` / `viewer123`
+
+**Refresh Token Endpoint:** `POST https://j2bxq20h-8081.asse.devtunnels.ms/api/v1/auth/refresh`
+
+**Refresh Request Body:**
+```json
+{
+  "refreshToken": "<your_refresh_token>"
+}
+```
 
 ---
 

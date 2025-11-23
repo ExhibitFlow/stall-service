@@ -2,7 +2,7 @@
 	"info": {
 		"_postman_id": "stall-service-collection",
 		"name": "Stall Service API",
-		"description": "Complete API collection for ExhibitFlow Stall Service with OAuth2/JWT authentication via Keycloak",
+		"description": "Complete API collection for ExhibitFlow Stall Service with JWT authentication (HS512) via Custom Identity Service. Includes role-based authorization: VIEWER (read), MANAGER (write), ADMIN (full access).",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"auth": {
@@ -39,27 +39,26 @@
 		{
 			"key": "baseUrl",
 			"value": "https://miniature-space-fortnight-p9945qrp4xpf7q46-8081.app.github.dev",
-			"type": "string"
+			"type": "string",
+			"description": "Stall Service base URL"
 		},
 		{
-			"key": "keycloakUrl",
-			"value": "https://miniature-space-fortnight-p9945qrp4xpf7q46-8080.app.github.dev",
-			"type": "string"
+			"key": "identityUrl",
+			"value": "https://j2bxq20h-8081.asse.devtunnels.ms/api/v1",
+			"type": "string",
+			"description": "Identity Service base URL"
 		},
 		{
 			"key": "access_token",
 			"value": "",
-			"type": "string"
+			"type": "string",
+			"description": "JWT access token (auto-populated from login requests)"
 		},
 		{
-			"key": "client_id",
-			"value": "stall-service",
-			"type": "string"
-		},
-		{
-			"key": "client_secret",
-			"value": "stall-service-secret-key-2024",
-			"type": "string"
+			"key": "refresh_token",
+			"value": "",
+			"type": "string",
+			"description": "JWT refresh token for renewing access tokens"
 		}
 	],
 	"item": [
@@ -95,6 +94,53 @@
 			"name": "Authentication",
 			"item": [
 				{
+					"name": "Register New User",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 201 || pm.response.code === 200) {",
+									"    var jsonData = pm.response.json();",
+									"    console.log(\"User registered successfully: \" + jsonData.username);",
+									"    console.log(\"Assigned roles: \" + jsonData.roles.join(\", \"));",
+									"    console.log(\"Permissions: \" + jsonData.permissions.join(\", \"));",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"username\": \"newuser\",\n  \"password\": \"password123\",\n  \"email\": \"newuser@example.com\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\"\n}"
+						},
+						"url": {
+							"raw": "{{identityUrl}}/auth/register",
+							"host": [
+								"{{identityUrl}}"
+							],
+							"path": [
+								"auth",
+								"register"
+							]
+						},
+						"description": "Register a new user. All users are automatically assigned the VIEWER role (read-only access to stalls). To assign MANAGER or ADMIN roles, use the Identity Service admin endpoints after registration."
+					},
+					"response": []
+				},
+				{
 					"name": "Get Token - Admin User",
 					"event": [
 						{
@@ -103,8 +149,12 @@
 								"exec": [
 									"if (pm.response.code === 200) {",
 									"    var jsonData = pm.response.json();",
-									"    pm.collectionVariables.set(\"access_token\", jsonData.access_token);",
+									"    pm.collectionVariables.set(\"access_token\", jsonData.accessToken);",
+									"    if (jsonData.refreshToken) {",
+									"        pm.collectionVariables.set(\"refresh_token\", jsonData.refreshToken);",
+									"    }",
 									"    console.log(\"Access token saved to collection variable\");",
+									"    console.log(\"Token expires in: \" + jsonData.expiresIn + \"ms\");",
 									"}"
 								],
 								"type": "text/javascript"
@@ -119,58 +169,29 @@
 						"header": [
 							{
 								"key": "Content-Type",
-								"value": "application/x-www-form-urlencoded"
+								"value": "application/json"
 							}
 						],
 						"body": {
-							"mode": "urlencoded",
-							"urlencoded": [
-								{
-									"key": "grant_type",
-									"value": "password",
-									"type": "text"
-								},
-								{
-									"key": "client_id",
-									"value": "{{client_id}}",
-									"type": "text"
-								},
-								{
-									"key": "client_secret",
-									"value": "{{client_secret}}",
-									"type": "text"
-								},
-								{
-									"key": "username",
-									"value": "admin",
-									"type": "text"
-								},
-								{
-									"key": "password",
-									"value": "admin123",
-									"type": "text"
-								}
-							]
+							"mode": "raw",
+							"raw": "{\n  \"username\": \"admin\",\n  \"password\": \"admin123\"\n}"
 						},
 						"url": {
-							"raw": "{{keycloakUrl}}/realms/exhibitflow/protocol/openid-connect/token",
+							"raw": "{{identityUrl}}/auth/login",
 							"host": [
-								"{{keycloakUrl}}"
+								"{{identityUrl}}"
 							],
 							"path": [
-								"realms",
-								"exhibitflow",
-								"protocol",
-								"openid-connect",
-								"token"
+								"auth",
+								"login"
 							]
 						},
-						"description": "Get access token for admin user (full access)"
+						"description": "Get access token for admin user. ADMIN role grants full access: create, read, update, hold, release, reserve stalls. JWT token uses HS512 algorithm with 24-hour lifetime."
 					},
 					"response": []
 				},
 				{
-					"name": "Get Token - Manager User",
+					"name": "Get Token - Manager User (Read/Write Access)",
 					"event": [
 						{
 							"listen": "test",
@@ -178,7 +199,10 @@
 								"exec": [
 									"if (pm.response.code === 200) {",
 									"    var jsonData = pm.response.json();",
-									"    pm.collectionVariables.set(\"access_token\", jsonData.access_token);",
+									"    pm.collectionVariables.set(\"access_token\", jsonData.accessToken);",
+									"    if (jsonData.refreshToken) {",
+									"        pm.collectionVariables.set(\"refresh_token\", jsonData.refreshToken);",
+									"    }",
 									"    console.log(\"Access token saved to collection variable\");",
 									"}"
 								],
@@ -194,50 +218,21 @@
 						"header": [
 							{
 								"key": "Content-Type",
-								"value": "application/x-www-form-urlencoded"
+								"value": "application/json"
 							}
 						],
 						"body": {
-							"mode": "urlencoded",
-							"urlencoded": [
-								{
-									"key": "grant_type",
-									"value": "password",
-									"type": "text"
-								},
-								{
-									"key": "client_id",
-									"value": "{{client_id}}",
-									"type": "text"
-								},
-								{
-									"key": "client_secret",
-									"value": "{{client_secret}}",
-									"type": "text"
-								},
-								{
-									"key": "username",
-									"value": "manager",
-									"type": "text"
-								},
-								{
-									"key": "password",
-									"value": "manager123",
-									"type": "text"
-								}
-							]
+							"mode": "raw",
+							"raw": "{\n  \"username\": \"manager\",\n  \"password\": \"manager123\"\n}"
 						},
 						"url": {
-							"raw": "{{keycloakUrl}}/realms/exhibitflow/protocol/openid-connect/token",
+							"raw": "{{identityUrl}}/auth/login",
 							"host": [
-								"{{keycloakUrl}}"
+								"{{identityUrl}}"
 							],
 							"path": [
-								"realms",
-								"exhibitflow",
-								"protocol",
-								"openid-connect",
-								"token"
+								"auth",
+								"login"
 							]
 						},
 						"description": "Get access token for manager user (management access)"
@@ -245,7 +240,7 @@
 					"response": []
 				},
 				{
-					"name": "Get Token - Viewer User",
+					"name": "Get Token - Viewer User (Read-Only Access)",
 					"event": [
 						{
 							"listen": "test",
@@ -253,7 +248,10 @@
 								"exec": [
 									"if (pm.response.code === 200) {",
 									"    var jsonData = pm.response.json();",
-									"    pm.collectionVariables.set(\"access_token\", jsonData.access_token);",
+									"    pm.collectionVariables.set(\"access_token\", jsonData.accessToken);",
+									"    if (jsonData.refreshToken) {",
+									"        pm.collectionVariables.set(\"refresh_token\", jsonData.refreshToken);",
+									"    }",
 									"    console.log(\"Access token saved to collection variable\");",
 									"}"
 								],
@@ -269,58 +267,29 @@
 						"header": [
 							{
 								"key": "Content-Type",
-								"value": "application/x-www-form-urlencoded"
+								"value": "application/json"
 							}
 						],
 						"body": {
-							"mode": "urlencoded",
-							"urlencoded": [
-								{
-									"key": "grant_type",
-									"value": "password",
-									"type": "text"
-								},
-								{
-									"key": "client_id",
-									"value": "{{client_id}}",
-									"type": "text"
-								},
-								{
-									"key": "client_secret",
-									"value": "{{client_secret}}",
-									"type": "text"
-								},
-								{
-									"key": "username",
-									"value": "viewer",
-									"type": "text"
-								},
-								{
-									"key": "password",
-									"value": "viewer123",
-									"type": "text"
-								}
-							]
+							"mode": "raw",
+							"raw": "{\n  \"username\": \"user\",\n  \"password\": \"user123\"\n}"
 						},
 						"url": {
-							"raw": "{{keycloakUrl}}/realms/exhibitflow/protocol/openid-connect/token",
+							"raw": "{{identityUrl}}/auth/login",
 							"host": [
-								"{{keycloakUrl}}"
+								"{{identityUrl}}"
 							],
 							"path": [
-								"realms",
-								"exhibitflow",
-								"protocol",
-								"openid-connect",
-								"token"
+								"auth",
+								"login"
 							]
 						},
-						"description": "Get access token for viewer user (read-only access)"
+						"description": "Get access token for regular user"
 					},
 					"response": []
 				},
 				{
-					"name": "Get Token - Service Account",
+					"name": "Refresh Token",
 					"event": [
 						{
 							"listen": "test",
@@ -328,8 +297,11 @@
 								"exec": [
 									"if (pm.response.code === 200) {",
 									"    var jsonData = pm.response.json();",
-									"    pm.collectionVariables.set(\"access_token\", jsonData.access_token);",
-									"    console.log(\"Access token saved to collection variable\");",
+									"    pm.collectionVariables.set(\"access_token\", jsonData.accessToken);",
+									"    if (jsonData.refreshToken) {",
+									"        pm.collectionVariables.set(\"refresh_token\", jsonData.refreshToken);",
+									"    }",
+									"    console.log(\"New access token saved to collection variable\");",
 									"}"
 								],
 								"type": "text/javascript"
@@ -344,48 +316,91 @@
 						"header": [
 							{
 								"key": "Content-Type",
-								"value": "application/x-www-form-urlencoded"
+								"value": "application/json"
 							}
 						],
 						"body": {
-							"mode": "urlencoded",
-							"urlencoded": [
-								{
-									"key": "grant_type",
-									"value": "client_credentials",
-									"type": "text"
-								},
-								{
-									"key": "client_id",
-									"value": "{{client_id}}",
-									"type": "text"
-								},
-								{
-									"key": "client_secret",
-									"value": "{{client_secret}}",
-									"type": "text"
-								}
-							]
+							"mode": "raw",
+							"raw": "{\n  \"refreshToken\": \"{{refresh_token}}\"\n}"
 						},
 						"url": {
-							"raw": "{{keycloakUrl}}/realms/exhibitflow/protocol/openid-connect/token",
+							"raw": "{{identityUrl}}/auth/refresh",
 							"host": [
-								"{{keycloakUrl}}"
+								"{{identityUrl}}"
 							],
 							"path": [
-								"realms",
-								"exhibitflow",
-								"protocol",
-								"openid-connect",
-								"token"
+								"auth",
+								"refresh"
 							]
 						},
-						"description": "Get access token using client credentials (service account)"
+						"description": "Refresh the access token using refresh token"
 					},
 					"response": []
 				}
 			],
-			"description": "OAuth2/JWT authentication endpoints via Keycloak. Run one of these first to get an access token."
+			"description": "JWT authentication endpoints (HS512) via Custom Identity Service. Login to get access token with roles: ADMIN (full), MANAGER (write), VIEWER (read). Tokens valid for 24 hours."
+		},
+		{
+			"name": "Token Introspection",
+			"item": [
+				{
+					"name": "Introspect Token (RFC 7662)",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{identityUrl}}/oauth/introspect?token={{access_token}}",
+							"host": [
+								"{{identityUrl}}"
+							],
+							"path": [
+								"oauth",
+								"introspect"
+							],
+							"query": [
+								{
+									"key": "token",
+									"value": "{{access_token}}"
+								}
+							]
+						},
+						"description": "Introspect the current access token to see detailed information: active status, username, roles, permissions, expiration time (RFC 7662 compliant)."
+					},
+					"response": []
+				},
+				{
+					"name": "Validate Token (Simple)",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [],
+						"url": {
+							"raw": "{{identityUrl}}/oauth/validate?token={{access_token}}",
+							"host": [
+								"{{identityUrl}}"
+							],
+							"path": [
+								"oauth",
+								"validate"
+							],
+							"query": [
+								{
+									"key": "token",
+									"value": "{{access_token}}"
+								}
+							]
+						},
+						"description": "Simple token validation endpoint. Returns {\"valid\": true/false}."
+					},
+					"response": []
+				}
+			],
+			"description": "Token introspection and validation endpoints for debugging and monitoring token status."
 		},
 		{
 			"name": "Stalls - List & Filter",
