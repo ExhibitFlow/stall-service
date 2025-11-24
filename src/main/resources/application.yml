@@ -4,8 +4,8 @@ spring:
   
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/stalldb}
-    username: ${SPRING_DATASOURCE_USERNAME:stalluser}
-    password: ${SPRING_DATASOURCE_PASSWORD:stallpass}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres}
+    password: ${SPRING_DATASOURCE_PASSWORD:Prami@3990}
     driver-class-name: org.postgresql.Driver
   
   jpa:
