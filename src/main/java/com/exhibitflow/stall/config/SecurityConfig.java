@@ -46,6 +46,7 @@ public class SecurityConfig {
 
     private final JwtAuthenticationConverter jwtAuthenticationConverter;
     private final IdentityServiceProperties identityServiceProperties;
+    private final org.springframework.web.cors.CorsConfigurationSource corsConfigurationSource;
 
     @Value("${jwt.secret}")
     private String jwtSecret;
@@ -99,7 +100,8 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http, JwtDecoder jwtDecoder) throws Exception {
         http
-            // CSRF protection is disabled for stateless REST API using JWT authentication
+            .cors(cors -> cors.configurationSource(corsConfigurationSource))
+                // CSRF protection is disabled for stateless REST API using JWT authentication
             // This is safe because JWT tokens are not stored in cookies and are immune to CSRF attacks
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
