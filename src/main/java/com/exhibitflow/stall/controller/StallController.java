@@ -31,7 +31,7 @@ public class StallController {
 
     @GetMapping
     @Operation(summary = "List all stalls with filtering and pagination", 
-               description = "Requires: VIEWER role or higher")
+               description = "Requires: VIEWER role or higher. Set page=0 to get all stalls without pagination")
     @org.springframework.security.access.prepost.PreAuthorize("hasAnyRole('VIEWER', 'MANAGER', 'ADMIN')")
     public ResponseEntity<Page<StallResponse>> getStalls(
             @Parameter(description = "Filter by status") @RequestParam(required = false) StallStatus status,
@@ -39,7 +39,9 @@ public class StallController {
             @Parameter(description = "Filter by location (partial match)") @RequestParam(required = false) String location,
             @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.ASC) Pageable pageable
     ) {
-        Page<StallResponse> stalls = stallService.getStalls(status, stallSize, location, pageable);
+        Page<StallResponse> stalls = pageable.getPageNumber() == 0 
+            ? stallService.getAllStalls(status, stallSize, location, pageable.getSort())
+            : stallService.getStalls(status, stallSize, location, pageable);
         return ResponseEntity.ok(stalls);
     }
 

@@ -29,6 +29,16 @@ public class StallService {
     }
 
     @Transactional(readOnly = true)
+    public Page<StallResponse> getAllStalls(StallStatus status, StallSize size, String location, org.springframework.data.domain.Sort sort) {
+        log.info("Fetching ALL stalls with filters - status: {}, size: {}, location: {}", status, size, location);
+        java.util.List<Stall> allStalls = stallRepository.findAllByFilters(status, size, location, sort);
+        java.util.List<StallResponse> responses = allStalls.stream()
+                .map(this::mapToResponse)
+                .collect(java.util.stream.Collectors.toList());
+        return new org.springframework.data.domain.PageImpl<>(responses, org.springframework.data.domain.Pageable.unpaged(), responses.size());
+    }
+
+    @Transactional(readOnly = true)
     public StallResponse getStallById(Long id) {
         log.info("Fetching stall by id: {}", id);
         Stall stall = stallRepository.findById(id)
